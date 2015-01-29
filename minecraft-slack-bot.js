@@ -9,12 +9,22 @@ var serverState = {
 	players: []
 }
 
+var sessionCookie = null
+
 function mainLoop() {
 	var deferred = Q.defer()
+	var cookie = ''
+	if (sessionCookie) {
+		cookie = 'JSESSIONID=' + sessionCookie
+	}
+
 	var options = {
 		'hostname': config.dynmap.host,
 		'port': config.dynmap.port,
-		'path': config.dynmap.path
+		'path': config.dynmap.path,
+		'headers': {
+			'Cookie': cookie
+		}
 	}
 
 	http.get(options, function(res) {
@@ -32,6 +42,21 @@ function mainLoop() {
 			res.on('end', function () {
 				//console.log(resbody)
 				resjson = JSON.parse(resbody)
+
+				// If we haven't set out cookie yet, get it from the server
+				console.log(res.headers['set-cookie'])
+				if (sessionCookie == null) {
+					if (res.headers['set-cookie'] != null && res.headers['set-cookie'][0] != null) {
+						res.headers['set-cookie'][0].split(';').forEach(function(cookie) {
+							cookiearr = cookie.split('=')
+							if (cookiearr[0] == 'JSESSIONID') {
+								sessionCookie = cookiearr[1]
+								console.log("Got a cookie!")
+								console.log(sessionCookie)
+							}
+						})
+					}
+				}
 
 				if(!serverState.initialized) {
 					serverState.initialized = true;
@@ -55,6 +80,12 @@ function mainLoop() {
 
 				deferred.resolve()
 			});
+
+    		res.on('error', function(err) {
+				console.log("http error")
+				console.log(err)
+    			deferred.error()
+    		});
 		} else {
 			console.log("http error")
 			console.log(res)
