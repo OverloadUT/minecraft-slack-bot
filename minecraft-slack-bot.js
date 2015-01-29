@@ -6,7 +6,8 @@ var Q = require('q')
 var serverState = {
 	initialized: false,
 	playersOnline: 0,
-	players: []
+	players: [],
+	lastTimestamp: 0
 }
 
 var sessionCookie = null
@@ -21,7 +22,7 @@ function mainLoop() {
 	var options = {
 		'hostname': config.dynmap.host,
 		'port': config.dynmap.port,
-		'path': config.dynmap.path,
+		'path': '/up/world/world/'+serverState.lastTimestamp,
 		'headers': {
 			'Cookie': cookie
 		}
@@ -44,7 +45,6 @@ function mainLoop() {
 				resjson = JSON.parse(resbody)
 
 				// If we haven't set out cookie yet, get it from the server
-				console.log(res.headers['set-cookie'])
 				if (sessionCookie == null) {
 					if (res.headers['set-cookie'] != null && res.headers['set-cookie'][0] != null) {
 						res.headers['set-cookie'][0].split(';').forEach(function(cookie) {
@@ -66,17 +66,34 @@ function mainLoop() {
 						serverState.players.push(player.name)
 					})
 
-					if (serverState.playersOnline < resjson.currentcount) {
-						console.log("player logged in")
-						reportPlayerLogin(serverState.players)
-					} else if (serverState.playersOnline > resjson.currentcount) {
-						console.log("player logged out")
-						//reportPlayerLogout()
-					}
+					resjson.updates.forEach(function(update) {
+						if (update.type == "chat" && config.enableChat) {
+							message = update.message
+							username = update.playerName
+							if (update.source == "web") {
+								username = "[Web] " + username
+							} else {
+								username = "[Game] " + username
+							}
+
+							minecraftChat({
+								text: message,
+								username: username
+							}, function(err) {
+								if (err) {
+									console.log("Slack error")
+									console.log(err)
+								}
+							})
+						} else if (update.type == 'playerjoin') {
+							reportPlayerLogin(update.playerName, serverState.players)
+						}
+					})
 				}
 
 				serverState.playersOnline = resjson.currentcount;
 				serverState.players = resjson.players;
+				serverState.lastTimestamp = resjson.timestamp;
 
 				deferred.resolve()
 			});
@@ -105,21 +122,25 @@ function mainLoopSync() {
 mainLoopSync()
 
 var minecraftNotice = slack.extend({
-  channel: '#minecraft',
+  channel: config.announceChannel,
   icon_url: config.slack.icon_url,
-  username: 'Minecraft Server',
-  color: 'good'
+  username: 'Minecraft Server'
+});
+
+var minecraftChat = slack.extend({
+  channel: config.chatChannel,
+  icon_url: config.slack.icon_url,
 });
 
 // ()).then(function() {
 // 	setTimeout(mainLoop, 2000)
 // });
 
-function reportPlayerLogin(players) {
+function reportPlayerLogin(thisplayer, players) {
     var deferred = Q.defer();
 
     minecraftNotice({
-    	text: "A player logged in!",
+    	text: thisplayer + " logged in to the server!",
     	fields: {
     		'Players Online': players.join(", ")
     	}
