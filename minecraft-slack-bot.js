@@ -7,6 +7,7 @@ var serverState = {
 	initialized: false,
 	playersOnline: 0,
 	players: [],
+	playerFaces: {},
 	lastTimestamp: 0
 }
 
@@ -30,18 +31,18 @@ function mainLoop() {
 
 	http.get(options, function(res) {
 		if(res.statusCode == 200) {
-			console.log("Good server response. Getting data...")
+			process.stdout.write("Good server response. Getting data");
 			var resbody = '';
 
 			//another chunk of data has been recieved, so append it to `str`
 			res.on('data', function (chunk) {
-				console.log(".")
+				process.stdout.write(".");
 				resbody += chunk;
 			});
 
 			//the whole response has been recieved, so we just print it out here
 			res.on('end', function () {
-				//console.log(resbody)
+				process.stdout.write("\r\n");
 				resjson = JSON.parse(resbody)
 
 				// If we haven't set out cookie yet, get it from the server
@@ -60,6 +61,9 @@ function mainLoop() {
 
 				if(!serverState.initialized) {
 					serverState.initialized = true;
+					resjson.players.forEach(function (player) {
+						updateChatIcon(player.name)
+					})
 				} else {
 					serverState.players = []
 					resjson.players.forEach(function (player) {
@@ -68,24 +72,10 @@ function mainLoop() {
 
 					resjson.updates.forEach(function(update) {
 						if (update.type == "chat" && config.enableChat) {
-							message = update.message
-							username = update.playerName
-							if (update.source == "web") {
-								username = "[Web] " + username
-							} else {
-								username = "[Game] " + username
-							}
-
-							minecraftChat({
-								text: message,
-								username: username
-							}, function(err) {
-								if (err) {
-									console.log("Slack error")
-									console.log(err)
-								}
-							})
+							updateChatIcon(update.playerName)
+							chatToSlack(update.playerName, update.message, update.source)
 						} else if (update.type == 'playerjoin') {
+							updateChatIcon(update.playerName)
 							reportPlayerLogin(update.playerName, serverState.players)
 						}
 					})
@@ -113,13 +103,37 @@ function mainLoop() {
 	return deferred.promise;
 }
 
-function mainLoopSync() {
+// The main synchronous loop
+(function mainLoopSync() {
 	mainLoop().then(function() {
 		setTimeout(mainLoopSync, 2000)
 	})
-}
+})()
 
-mainLoopSync()
+function updateChatIcon(playerName) {
+	if (typeof(serverState.playerFaces[playerName]) === 'undefined') {
+		var options = {
+			'hostname': config.dynmap.host,
+			'port': config.dynmap.port,
+			'path': '/tiles/faces/32x32/' + playerName + '.png',
+		}
+
+		var req = http.get(options, function(res) {
+			if (res.statusCode == 200) {
+				serverState.playerFaces[playerName] = 'http://' + config.dynmap.host + ':' + config.dynmap.port + '/tiles/faces/32x32/' + playerName + '.png'
+				console.log("Found a chat face for " + playerName)
+			} else {
+				serverState.playerFaces[playerName] = null
+				console.log("No chat face found for " + playerName)
+			}
+		})
+
+		req.on('error', function(e) {
+			console.log('problem with request: ' + e.message);
+		});
+	}
+	
+}
 
 var minecraftNotice = slack.extend({
   channel: config.announceChannel,
@@ -132,13 +146,30 @@ var minecraftChat = slack.extend({
   icon_url: config.slack.icon_url,
 });
 
-// ()).then(function() {
-// 	setTimeout(mainLoop, 2000)
-// });
+
+function chatToSlack(playerName, message, source) {
+	username = playerName
+	if (source == "web") {
+		username = "[Web] " + username
+	} else {
+		username = "[Game] " + username
+	}
+
+	icon_url = serverState.playerFaces[playerName] || config.defaultChatFace
+
+	minecraftChat({
+		text: message,
+		username: username,
+		icon_url: icon_url
+	}, function(err) {
+		if (err) {
+			console.log("Slack error")
+			console.log(err)
+		}
+	})
+}
 
 function reportPlayerLogin(thisplayer, players) {
-    var deferred = Q.defer();
-
     minecraftNotice({
     	text: thisplayer + " logged in to the server!",
     	fields: {
@@ -148,12 +179,8 @@ function reportPlayerLogin(thisplayer, players) {
 		if (err) {
 			console.log("Slack error")
 			console.log(err)
-			deferred.error()
 		} else {
 			console.log("Slack success")
-			deferred.resolve()
 		}
 	})
-
-    return deferred.promise;
 }
