@@ -88,22 +88,22 @@ function mainLoop() {
 				deferred.resolve()
 			});
 		} else {
-			console.log("http error")
+			console.log("HTTP error: Non-200 status code")
 			console.log(res)
-			deferred.error()
+			deferred.resolve()
 		}
 
 		res.on('error', function(err) {
-			console.log("http error")
+			console.log("http error when recieving packets")
 			console.log(err)
-			deferred.error()
+			deferred.resolve()
 		});
 	});
 
 	request.on('error', function(err) {
-		console.log("http error")
+		console.log("http error on connection attempt")
 		console.log(err)
-		deferred.error()
+		deferred.resolve()
 	});
 
 	return deferred.promise;
