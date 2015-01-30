@@ -29,18 +29,18 @@ function mainLoop() {
 		}
 	}
 
-	http.get(options, function(res) {
+	var request = http.get(options, function(res) {
 		if(res.statusCode == 200) {
 			process.stdout.write("Good server response. Getting data");
 			var resbody = '';
 
-			//another chunk of data has been recieved, so append it to `str`
+			//another chunk of data has been recieved, so append it to `resbody`
 			res.on('data', function (chunk) {
 				process.stdout.write(".");
 				resbody += chunk;
 			});
 
-			//the whole response has been recieved, so we just print it out here
+			//the whole response has been recieved, so process it
 			res.on('end', function () {
 				process.stdout.write("\r\n");
 				resjson = JSON.parse(resbody)
@@ -87,17 +87,23 @@ function mainLoop() {
 
 				deferred.resolve()
 			});
-
-    		res.on('error', function(err) {
-				console.log("http error")
-				console.log(err)
-    			deferred.error()
-    		});
 		} else {
 			console.log("http error")
 			console.log(res)
 			deferred.error()
 		}
+
+		res.on('error', function(err) {
+			console.log("http error")
+			console.log(err)
+			deferred.error()
+		});
+	});
+
+	request.on('error', function(err) {
+		console.log("http error")
+		console.log(err)
+		deferred.error()
 	});
 
 	return deferred.promise;
@@ -118,7 +124,7 @@ function updateChatIcon(playerName) {
 			'path': '/tiles/faces/32x32/' + playerName + '.png',
 		}
 
-		var req = http.get(options, function(res) {
+		var request = http.get(options, function(res) {
 			if (res.statusCode == 200) {
 				serverState.playerFaces[playerName] = 'http://' + config.dynmap.host + ':' + config.dynmap.port + '/tiles/faces/32x32/' + playerName + '.png'
 				console.log("Found a chat face for " + playerName)
@@ -126,10 +132,16 @@ function updateChatIcon(playerName) {
 				serverState.playerFaces[playerName] = null
 				console.log("No chat face found for " + playerName)
 			}
+
+			res.on('error', function(e) {
+				console.log('problem with request: ' + e.message);
+			});
 		})
 
-		req.on('error', function(e) {
-			console.log('problem with request: ' + e.message);
+		request.on('error', function(err) {
+			console.log("http error while getting chat icon")
+			console.log(err)
+			deferred.error()
 		});
 	}
 	
