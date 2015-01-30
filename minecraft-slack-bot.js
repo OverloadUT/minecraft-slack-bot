@@ -141,7 +141,6 @@ function updateChatIcon(playerName) {
 		request.on('error', function(err) {
 			console.log("http error while getting chat icon")
 			console.log(err)
-			deferred.error()
 		});
 	}
 	
