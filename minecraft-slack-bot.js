@@ -1,7 +1,11 @@
 var config = require('./config.js')
 var http = require('http')
 var slack = require('slack-notify')(config.slack.webhookurl);
+var express = require('express')
 var Q = require('q')
+
+var bodyParser = require('body-parser');
+var multer = require('multer'); 
 
 var serverState = {
 	initialized: false,
@@ -12,6 +16,87 @@ var serverState = {
 }
 
 var sessionCookie = null
+
+var recentSentMessages = []
+
+// If we're doing Slack->Minecraft chat, set up an http server to get the data from Slack
+if (config.enableChat) {
+	var app = express()
+	app.use(bodyParser.json()); // for parsing application/json
+	app.use(bodyParser.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
+	app.use(multer()); // for parsing multipart/form-data
+
+	// Just in case someone opens the page in the browser
+	app.get('/', function (req, res) {
+		console.log("Got GET request")
+		res.send("You don't belong here.")
+	})
+
+	app.post('/', function (req, res) {
+		console.log("Got POST request")
+		var postdata = req.body
+
+		// Only do something if the token matches the secret token in the Slack integration config
+		if(postdata.token == config.incomingChatToken) {
+			// Ignore messages from USLACKBOT, as those were sent TO slack from Minecraft in the first place!
+			if(postdata.user_id != 'USLACKBOT') {
+				var username = 'UnknownUser'
+				if (config.chatNames[postdata.user_name]) {
+					username = config.chatNames[postdata.user_name]
+				} else if (!config.incomingChatPrivacy) {
+					username = postdata.user_name
+				}
+
+				var message = postdata.text
+
+				var payload = JSON.stringify({
+					name: username,
+					message: message
+				})
+
+				console.log("Sending chat to Minecraft server:")
+
+				if (recentSentMessages.unshift(username + '-' + message) > 10) {
+					recentSentMessages.length = 10
+				}
+
+				var options = {
+					hostname: config.dynmap.host,
+					port: config.dynmap.port,
+					path: '/up/sendmessage',
+					method: 'POST',
+					'Content-Type': 'application/json',
+					'Content-Length': payload.length
+				};
+
+				var req = http.request(options, function(res) {
+					res.setEncoding('utf8');
+					res.on('data', function (chunk) {
+						// TODO We should really check the server's response in case it was rejected
+					});
+				});
+
+				req.on('error', function(e) {
+					console.log('HTTP Error while sending chat to dynmap: ' + e.message)
+					console.log(e)
+				});
+
+				// write data to request body
+				req.write(payload);
+				req.end();
+			}
+		}
+
+		res.send('')
+	})
+
+	var server = app.listen(config.incomingChatServerPort, function() {
+		var host = server.address().address
+		var port = server.address().port
+
+		console.log('Chat server listening at http://%s:%s', host, port)
+	})
+}
 
 function mainLoop() {
 	var deferred = Q.defer()
@@ -72,8 +157,13 @@ function mainLoop() {
 
 					resjson.updates.forEach(function(update) {
 						if (update.type == "chat" && config.enableChat) {
-							updateChatIcon(update.playerName)
-							chatToSlack(update.playerName, update.message, update.source)
+							// Check to make sure this message wasn't sent FROM Slack to begin with
+							if(recentSentMessages.indexOf(update.playerName + '-' + update.message) == -1) {
+								updateChatIcon(update.playerName)
+								chatToSlack(update.playerName, update.message, update.source)
+							} else {
+								console.log('Ignored chat message that originated from Slack')
+							}
 						} else if (update.type == 'playerjoin') {
 							updateChatIcon(update.playerName)
 							reportPlayerLogin(update.playerName, serverState.players)
@@ -115,6 +205,8 @@ function mainLoop() {
 		setTimeout(mainLoopSync, 2000)
 	})
 })()
+
+
 
 function updateChatIcon(playerName) {
 	if (typeof(serverState.playerFaces[playerName]) === 'undefined') {
