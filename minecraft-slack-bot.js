@@ -1,4 +1,4 @@
-var config = require('./config.js')
+var config = require('./config-heroku.js')
 var http = require('http')
 var slack = require('slack-notify')(config.slack.webhookurl);
 var express = require('express')
@@ -20,6 +20,8 @@ var serverState = {
 var sessionCookie = null
 
 var recentSentMessages = []
+
+var defaultChatFace = 'http://' + config.dynmap.host + ':' + config.dynmap.port + '/tiles/faces/32x32/default.png'
 
 // If we're doing Slack->Minecraft chat, set up an http server to get the data from Slack
 if (config.enableChat) {
@@ -268,7 +270,7 @@ function chatToSlack(playerName, message, source) {
 		username = "[Game] " + username
 	}
 
-	icon_url = serverState.playerFaces[playerName] || config.defaultChatFace
+	icon_url = serverState.playerFaces[playerName] || defaultChatFace
 
 	minecraftChat({
 		text: message,
