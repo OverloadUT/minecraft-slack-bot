@@ -5,7 +5,7 @@ var express = require('express')
 var Q = require('q')
 
 var bodyParser = require('body-parser');
-var multer = require('multer'); 
+var multer = require('multer');
 
 var serverState = {
 	initialized: false,

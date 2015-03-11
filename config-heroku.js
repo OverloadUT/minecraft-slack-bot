@@ -12,7 +12,7 @@ config.enableChat = process.env.CHAT_ENABLE
 config.chatChannel = process.env.CHAT_CHANNEL
 config.announceChannel = process.env.ANNOUNCE_CHANNEL
 
-config.incomingChatServerPort = process.env.CHAT_SERVER_PORT
+config.incomingChatServerPort = process.env.PORT
 config.incomingChatToken = process.env.CHAT_SERVER_TOKEN
 config.incomingChatPrivacy = process.env.CHAT_PRIVACY
 
