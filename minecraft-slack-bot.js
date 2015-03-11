@@ -12,7 +12,9 @@ var serverState = {
 	playersOnline: 0,
 	players: [],
 	playerFaces: {},
-	lastTimestamp: 0
+	lastTimestamp: 0,
+	lastServerResponseTime: 0,
+	serverOnline: true
 }
 
 var sessionCookie = null
@@ -117,6 +119,8 @@ function mainLoop() {
 	var request = http.get(options, function(res) {
 		if(res.statusCode == 200) {
 			process.stdout.write("Good server response. Getting data");
+			serverState.lastServerResponseTime = Date.now();
+			serverState.serverOnline = true;
 			var resbody = '';
 
 			//another chunk of data has been recieved, so append it to `resbody`
@@ -194,6 +198,12 @@ function mainLoop() {
 		console.log("http error on connection attempt")
 		console.log(err)
 		deferred.resolve()
+
+		if(serverState.serverOnline && Date.now() - serverState.lastServerResponseTime > 60000) {
+			console.log("Server has been offline for 60 seconds. Announcing it to Slack!")
+			serverState.serverOnline = false;
+			reportServerOffline();
+		}
 	});
 
 	return deferred.promise;
@@ -278,6 +288,19 @@ function reportPlayerLogin(thisplayer, players) {
     	fields: {
     		'Players Online': players.join(", ")
     	}
+    }, function(err) {
+		if (err) {
+			console.log("Slack error")
+			console.log(err)
+		} else {
+			console.log("Slack success")
+		}
+	})
+}
+
+function reportServerOffline() {
+    minecraftNotice({
+    	text: "Oh noooooooooo. Server appears to be offline!"
     }, function(err) {
 		if (err) {
 			console.log("Slack error")
