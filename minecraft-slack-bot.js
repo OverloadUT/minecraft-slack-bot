@@ -21,6 +21,8 @@ var sessionCookie = null
 
 var recentSentMessages = []
 
+var TIMEOUT_LENGTH = 120000
+
 var defaultChatFace = 'http://' + config.dynmap.host + ':' + config.dynmap.port + '/tiles/faces/32x32/default.png'
 
 // If we're doing Slack->Minecraft chat, set up an http server to get the data from Slack
@@ -201,7 +203,7 @@ function mainLoop() {
 		console.log(err)
 		deferred.resolve()
 
-		if(serverState.serverOnline && Date.now() - serverState.lastServerResponseTime > 60000) {
+		if(serverState.serverOnline && Date.now() - serverState.lastServerResponseTime > TIMEOUT_LENGTH) {
 			console.log("Server has been offline for 60 seconds. Announcing it to Slack!")
 			serverState.serverOnline = false;
 			reportServerOffline();
@@ -302,7 +304,8 @@ function reportPlayerLogin(thisplayer, players) {
 
 function reportServerOffline() {
     minecraftNotice({
-    	text: "Oh noooooooooo. Server appears to be offline!"
+    	text: "Oh noooooooooo. Server appears to be offline!",
+    	fields: {}
     }, function(err) {
 		if (err) {
 			console.log("Slack error")
